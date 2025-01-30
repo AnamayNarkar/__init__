@@ -264,7 +264,7 @@ pg_dump -U postgres -h localhost -p 5432  -s -F p -v -f ${DB_NAME}_dump.sql ${DB
 EOL
 
 touch frequentlyUsedCommands.txt
-cat<<EOL >
+cat<<EOL > frequentlyUsedCommands.txt
     export PATH=$PATH:$(go env GOPATH)/bin
     flyway migrate
     sqlc generate   
