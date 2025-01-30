@@ -28,6 +28,10 @@ if ! validate_db_name "$INPUT_DB_NAME"; then
     exit 1
 fi
 
+PROJECT_NAME=$INPUT_PROJECT_NAME
+
+DB_NAME=$INPUT_DB_NAME
+
 read -p "Enter database username: " DB_USER
 
 read -p "Enter database password: " -s DB_PASSWORD
@@ -152,6 +156,26 @@ func SetUpAllRoutes(r *gin.Engine, db* database.Queries){
 }
 EOL
 
+touch userRoutes.go
+
+cat <<EOL > userRoutes.go
+package routes
+
+import (
+    "${PROJECT_NAME}/internal/database"
+    "github.com/gin-gonic/gin"
+)
+
+func SetupUserRoutes(r *gin.Engine, db* database.Queries){
+    func SetupUserRoutes(r *gin.Engine, db* database.Queries){
+        r.GET("/users", func(c *gin.Context){
+            users := []string {"user1", "user2", "user3"}
+            c.JSON(200, users)
+        })
+    }
+}
+EOL
+
 
 cd -
 
@@ -172,13 +196,13 @@ touch users.sql
 cat <<EOL > users.sql
 -- name: CreateUser :one
     INSERT INTO users (username)
-    VALUES ($1)
+    VALUES (\$1)
     RETURNING id, username, created_at, updated_at;
 
 -- name: GetUser :one
     SELECT id,username,created_at,updated_at
     FROM users
-    WHERE username = $1;
+    WHERE username = \$1;
 
 -- name: GetAllUsers :many
     SELECT * FROM users;
