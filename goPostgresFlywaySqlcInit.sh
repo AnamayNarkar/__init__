@@ -289,10 +289,10 @@ EOL
 
 touch frequentlyUsedCommands.txt
 cat<<EOL > frequentlyUsedCommands.txt
-    export PATH=$PATH:$(go env GOPATH)/bin
-    flyway migrate
-    sqlc generate   
-    go build && ./${PROJECT_NAME}
+export PATH=\$PATH:\$(go env GOPATH)/bin
+flyway migrate
+sqlc generate   
+go build && ./${PROJECT_NAME}
 EOL
 
 echo "Running go mod tidy..."

@@ -34,7 +34,7 @@ mkdir -p src/{routes,controllers,service,utils,security,dto,dao}
 
 touch frequentlyUsedCommands.txt
 cat<<EOL > frequentlyUsedCommands.txt
-export PATH=\$PATH:$(go env GOPATH)/bin
+export PATH=\$PATH:\$(go env GOPATH)/bin
 jbang neo4j-migrations@neo4j migrate
 jbang neo4j-migrations@neo4j rollback
 jbang neo4j-migrations@neo4j validate
