@@ -48,7 +48,7 @@ touch main.go .env .gitignore go.mod go.sum migrations.properties
 cat<<EOL >.env
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=$DB_USER
-NEO4J_PASSWORD=neo4j
+NEO4J_PASSWORD=$DB_PASS
 PORT=3000
 EOL
 
@@ -91,32 +91,31 @@ cd src/utils
 touch getPort.go loadEnv.go setupCors.go setupDatabase.go
 
 cat<<EOL >getPort.go
-    package utils
+package utils
 
-    import (
-        "os"
-    )
+import (
+    "os"
+)
 
-    func GetPort() string {
-        port := os.Getenv("PORT")
-        if port == "" {
-            port = "3000"
-        }
-        return port
+func GetPort() string {
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "3000"
     }
+    return port
+}
 EOL
 
 cat<<EOL >loadEnv.go
-    package utils
+package utils
 
-    import (
-        "github.com/joho/godotenv"
-    )
+import (
+    "github.com/joho/godotenv"
+)
 
-    func LoadEnv() error {
-        return godotenv.Load()
-    }
-
+func LoadEnv() error {
+    return godotenv.Load()
+}
 EOL
 
 cat <<EOL > setupCors.go
@@ -297,7 +296,7 @@ func main() {
     routes.SetUpAllRoutes(r, &driver)
     
     port := utils.GetPort()
-    r.Run(":" + port)
+    r.Run(port)
 }
 EOL
 
