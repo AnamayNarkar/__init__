@@ -182,9 +182,9 @@ cat <<EOL > allRoutes.go
 package routes
 
 import (
-	"test/sqlc"
-	"test/src/controllers"
-	"test/src/middleware"
+    $PROJECT_NAME/sqlc
+    $PROJECT_NAME/src/controllers
+    $PROJECT_NAME/src/middleware
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -230,7 +230,7 @@ cat <<EOL > userController.go
 package controllers
 
 import (
-	"test/sqlc"
+	$PROJECT_NAME/sqlc
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -260,8 +260,8 @@ cat <<EOL > authController.go
 package controllers
 
 import (
-	"test/sqlc"
-	"test/src/entity"
+    $PROJECT_NAME/sqlc
+    $PROJECT_NAME/src/entity
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -395,9 +395,9 @@ package main
 
 import (
 	"log"
-	"test/sqlc"
-	"test/src/routes"
-	"test/src/utils"
+    $PROJECT_NAME/sqlc
+    $PROJECT_NAME/src/routes
+    $PROJECT_NAME/src/utils
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
