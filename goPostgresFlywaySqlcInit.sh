@@ -41,7 +41,7 @@ read -p "Enter database password: " -s DB_PASSWORD
 
 # Create directory structure
 echo "Creating necessary directories..."
-mkdir -p src/{routes,controllers,service,utils,security,dto,dao} sql/{migrations,queries}
+mkdir -p src/{routes,controllers,service,utils,security,dto,dao,middleware,entity} sql/{migrations,queries}
 
 # Initialize Go module
 echo "Initializing Go module..."
@@ -139,6 +139,39 @@ func SetupDatabase() (*sql.DB, error) {
 }
 EOL
 
+cat <<EOL > setupRedis.go
+package utils
+
+import (
+	"context"
+	"log"
+	"os"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+func SetupRedis() *redis.Client {
+	client := redis.NewClient(&redis.Options{
+		Addr:     os.Getenv("REDIS_URL"), // Use default Addr
+		Password: os.Getenv("REDIS_PASS"), // No password
+		DB:       0,                // Default DB
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := client.Ping(ctx).Result()
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+
+	log.Println("Connected to Redis!")
+	return client
+}
+
+EOL
+
 cd -
 
 cd src/routes
@@ -149,36 +182,124 @@ cat <<EOL > allRoutes.go
 package routes
 
 import (
-    "${PROJECT_NAME}/internal/database"
+	"test/sqlc"
+	"test/src/controllers"
+	"test/src/middleware"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
-func SetUpAllRoutes(r *gin.Engine, db* database.Queries){
-	SetupUserRoutes(r,db)
+type AllRoutes struct {
+	ginEngine   *gin.Engine
+	db          *sqlc.Queries
+	redisClient *redis.Client
 }
+
+func NewAllRoutes(r *gin.Engine, db *sqlc.Queries, redisClient *redis.Client) *AllRoutes {
+	return &AllRoutes{
+		ginEngine:   r,
+		db:          db,
+		redisClient: redisClient,
+	}
+}
+
+func (ar *AllRoutes) SetUpAllRoutes() {
+	userController := controllers.NewUserController(ar.db, ar.redisClient)
+
+	userGroup := ar.ginEngine.Group("/user")
+	userGroup.Use(middleware.GetSession(ar.redisClient))
+	userGroup.GET("/getAll", userController.GetAllUsers) 
+
+	authController := controllers.NewAuthController(ar.db, ar.redisClient)
+
+	authGroup := ar.ginEngine.Group("/auth")
+	authGroup.POST("/login", authController.Login)
+	authGroup.POST("/register", authController.Register)
+	authGroup.POST("/logout", authController.Logout)
+}
+
+
 EOL
 
-touch userRoutes.go
+cd -
 
-cat <<EOL > userRoutes.go
-package routes
+cd src/controllers
+
+cat <<EOL > userController.go
+package controllers
 
 import (
-    "${PROJECT_NAME}/internal/database"
-    "github.com/gin-gonic/gin"
+	"test/sqlc"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
-func SetupUserRoutes(r *gin.Engine, db* database.Queries){
-    func SetupUserRoutes(r *gin.Engine, db* database.Queries){
-        r.GET("/users", func(c *gin.Context){
-            users := []string {"user1", "user2", "user3"}
-            c.JSON(200, users)
-        })
-    }
+type UserController struct {
+	DB          *sqlc.Queries
+	RedisClient *redis.Client
 }
+
+func NewUserController(db *sqlc.Queries, redisClient *redis.Client) *UserController {
+	return &UserController{
+		DB:          db,
+		RedisClient: redisClient,
+	}
+}
+
+// Renamed function to use PascalCase
+func (uc *UserController) GetAllUsers(c *gin.Context) {
+	// Get users from database
+}
+
 EOL
 
+cat <<EOL > authController.go
+
+package controllers
+
+import (
+	"test/sqlc"
+	"test/src/entity"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+)
+
+type AuthController struct {
+	DB          *sqlc.Queries
+	RedisClient *redis.Client
+}
+
+func NewAuthController(db *sqlc.Queries, redisClient *redis.Client) *AuthController {
+	return &AuthController{
+		DB:          db,
+		RedisClient: redisClient,
+	}
+}
+
+// Utility function to create a session
+func (ac *AuthController) CreateSession() *entity.SessionValueEntity {
+	// Create session logic
+	return &entity.SessionValueEntity{}
+}
+
+// User authentication functions
+func (ac *AuthController) Login(c *gin.Context) {
+	// Login logic
+}
+
+func (ac *AuthController) Register(c *gin.Context) {
+	// User registration logic
+}
+
+func (ac *AuthController) Logout(c *gin.Context) {
+	// Delete session logic
+}
+
+
+EOL
 
 cd -
 
@@ -213,17 +334,73 @@ EOL
 
 cd ../../
 
+cd src/entity
+
+cat <<EOL > sessionEntity.go
+package entity
+
+type SessionValueEntity struct {
+	SessionId string
+	UserId    int
+}
+
+EOL
+
+cd -
+
+cd src/middleware
+
+cat<<EOL > checkUserSession.go
+package middleware
+
+import (
+	"context"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+)
+
+func GetSession(redisClient *redis.Client) gin.HandlerFunc{
+    return func(c *gin.Context) {
+        session := c.Query("session")
+        if session == "" {
+            c.JSON(400, gin.H{"error": "Session is required"})
+            c.Abort()
+            return
+        }
+        
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+
+        value, err := redisClient.Get(ctx, session).Result()
+        if err != nil {
+            c.JSON(400, gin.H{"error": "Invalid session"})
+            c.Abort()
+            return
+        }
+
+        c.Set("session", value)
+        c.Next()
+    }
+}
+
+EOL
+
+cd -
+
 # Create main.go
 cat <<EOL > main.go
 package main
 
 import (
-    "${PROJECT_NAME}/internal/database"
-    "log"
-    "${PROJECT_NAME}/src/routes"
-    "${PROJECT_NAME}/src/utils"
-    "github.com/gin-gonic/gin"
-    _ "github.com/lib/pq"
+	"log"
+	"test/sqlc"
+	"test/src/routes"
+	"test/src/utils"
+
+	"github.com/gin-gonic/gin"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -238,13 +415,19 @@ func main() {
     if err != nil {
         log.Fatalf("Error setting up database: %v", err)
     }
+
+    defer db.Close()
+
+    redisClient := utils.SetupRedis()
     
-    queries := database.New(db)
-    routes.SetUpAllRoutes(r, queries)
+    queries := sqlc.New(db)
+    AllRoutes := routes.NewAllRoutes(r,queries, redisClient)
+    AllRoutes.SetUpAllRoutes()
     
     port := utils.GetPort()
     r.Run(":" + port)
 }
+
 EOL
 
 # Write configuration to sqlc.yaml
@@ -256,7 +439,7 @@ sql:
     engine: "postgresql"
     gen:
       go:
-        out: "internal/database"
+        out: "sqlc"
         emit_json_tags: true
 EOL
 
@@ -287,15 +470,18 @@ EOL
 #Create a shell script to create a dump of the postgres database
 cat <<EOL > createSchemaDump.sh
 #!/bin/bash
-pg_dump -U postgres -h localhost -p 5432  -s -F p -v -f ${DB_NAME}_dump.sql ${DB_NAME}
+pg_dump -U postgres -h localhost -p 5432 -s -F p -v -f ${DB_NAME}_dump.sql ${DB_NAME}
 EOL
+
+chmod +x createSchemaDump.sh
 
 touch frequentlyUsedCommands.txt
 cat<<EOL > frequentlyUsedCommands.txt
-export PATH=\$PATH:\$(go env GOPATH)/bin
 flyway migrate
-sqlc generate   
 go build && ./${PROJECT_NAME}
+export PATH=\$PATH:\$(go env GOPATH)/bin
+sqlc generate   
+go mod tidy && go mod vendor
 EOL
 
 echo "Running go mod tidy..."
