@@ -1,9 +1,12 @@
 #!/bin/bash
 
 validate_project_name() {
-    if [[ "$1" =~ ^[a-zA-Z0-9-]+$ ]]; then
+    echo "Validating project name: $1"
+    if [[ "$1" =~ ^[-a-zA-Z0-9_./:]+$ ]]; then
+        echo "Project name is valid"
         return 0
     else
+        echo "Project name contains invalid characters"
         return 1
     fi
 }
@@ -16,9 +19,9 @@ validate_db_name() {
     fi
 }
 
-read -p "Enter the project name (letters, numbers, hyphens only): " INPUT_PROJECT_NAME
+read -p "Enter the project name (letters, numbers, hyphens, dots, slashes, underscores allowed): " INPUT_PROJECT_NAME
 if ! validate_project_name "$INPUT_PROJECT_NAME"; then
-    echo "Invalid name for project. Exiting."
+    echo "Invalid project name. Only letters, numbers, hyphens (-), dots (.), slashes (/), and underscores (_) are allowed."
     exit 1
 fi
 
