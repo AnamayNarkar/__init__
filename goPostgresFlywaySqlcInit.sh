@@ -1,12 +1,9 @@
 #!/bin/bash
 
 validate_project_name() {
-    echo "Validating project name: $1"
     if [[ "$1" =~ ^[-a-zA-Z0-9_./:]+$ ]]; then
-        echo "Project name is valid"
         return 0
     else
-        echo "Project name contains invalid characters"
         return 1
     fi
 }
@@ -173,6 +170,19 @@ EOL
 
 cd -
 
+cd src/dto
+
+cat <<EOL > usernameAndPasswordDto.go
+package dto
+
+type UsernameAndPasswordDto struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+EOL
+
+cd -
+
 cd src/routes
 
 touch allRoutes.go
@@ -206,13 +216,13 @@ func NewAllRoutes(r *gin.Engine, db *sqlc.Queries, redisClient *redis.Client) *A
 func (ar *AllRoutes) SetUpAllRoutes() {
 	userController := controllers.NewUserController(ar.db, ar.redisClient)
 
-	userGroup := ar.ginEngine.Group("/user")
+	userGroup := ar.ginEngine.Group("/api/user")
 	userGroup.Use(middleware.GetSession(ar.redisClient))
 	userGroup.GET("/getAll", userController.GetAllUsers) 
 
 	authController := controllers.NewAuthController(ar.db, ar.redisClient)
 
-	authGroup := ar.ginEngine.Group("/auth")
+	authGroup := ar.ginEngine.Group("/api/auth")
 	authGroup.POST("/login", authController.Login)
 	authGroup.POST("/register", authController.Register)
 	authGroup.POST("/logout", authController.Logout)
@@ -245,9 +255,14 @@ func NewUserController(db *sqlc.Queries, redisClient *redis.Client) *UserControl
 	}
 }
 
-// Renamed function to use PascalCase
 func (uc *UserController) GetAllUsers(c *gin.Context) {
-	// Get users from database
+	users, err := uc.DB.GetAllUsers(c)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(200, gin.H{"users": users})
 }
 EOL
 
@@ -256,42 +271,142 @@ cat <<EOL > authController.go
 package controllers
 
 import (
+    "database/sql"
+	"encoding/json"
+	"log"
+	"net/http"
+	"time"
+
     "$PROJECT_NAME/sqlc"
+    "$PROJECT_NAME/src/dto"
     "$PROJECT_NAME/src/entity"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
 type AuthController struct {
-	DB          *sqlc.Queries
-	RedisClient *redis.Client
+    DB          *sqlc.Queries
+    RedisClient *redis.Client
 }
 
 func NewAuthController(db *sqlc.Queries, redisClient *redis.Client) *AuthController {
-	return &AuthController{
-		DB:          db,
-		RedisClient: redisClient,
-	}
+    return &AuthController{
+        DB:          db,
+        RedisClient: redisClient,
+    }
 }
 
-// Utility function to create a session
-func (ac *AuthController) CreateSession() *entity.SessionValueEntity {
-	// Create session logic
-	return &entity.SessionValueEntity{}
+func (ac *AuthController) CreateSession(
+    userID uuid.UUID,
+    username string,
+    c *gin.Context,
+) {
+    newSessionValueEntity := entity.SessionValueEntity{
+        SessionId: uuid.New().String(),
+        UserId:    userID.String(),
+        Username:  username,
+    }
+
+    // Set cookie
+    cookie := &http.Cookie{
+        Name:     "session_id",
+        Value:    newSessionValueEntity.SessionId,
+        Expires:  time.Now().Add(24 * time.Hour),
+        HttpOnly: true,
+        Path:    "/", // This is important because the cookie will be available in all routes
+    }
+
+    http.SetCookie(c.Writer, cookie)
+
+    // Set Redis
+    sessionValue, err := json.Marshal(newSessionValueEntity)
+    if err != nil {
+        c.JSON(500, gin.H{"error": "internal server error"})
+        return
+    }
+
+    err = ac.RedisClient.Set(c, newSessionValueEntity.SessionId, sessionValue, 24*time.Hour).Err()
+    if err != nil {
+        c.JSON(500, gin.H{"error": "internal server error"})
+        return
+    }
+
+    log.Println("Session created")
 }
 
-// User authentication functions
 func (ac *AuthController) Login(c *gin.Context) {
-	// Login logic
+    requestBody := dto.UsernameAndPasswordDto{}
+    err := json.NewDecoder(c.Request.Body).Decode(&requestBody)
+    if err != nil {
+        c.JSON(400, gin.H{"error": "invalid request body"})
+        return
+    }
+
+    user, err := ac.DB.GetUser(c, requestBody.Username)
+    if err!=nil {
+        if err == sql.ErrNoRows {
+            c.JSON(401, gin.H{"error": "invalid credentials"})
+            return
+        } else {
+            c.JSON(500, gin.H{"error": "internal server error"})
+            return
+        }
+    }
+
+    if user.Password != requestBody.Password {
+        c.JSON(401, gin.H{"error": "invalid credentials"})
+        return
+    }
+
+    ac.CreateSession(user.ID, user.Username, c)
+
+    c.JSON(200, gin.H{"message": "login successful"})
 }
 
 func (ac *AuthController) Register(c *gin.Context) {
-	// User registration logic
+    requestBody := dto.UsernameAndPasswordDto{}
+    err := json.NewDecoder(c.Request.Body).Decode(&requestBody)
+    if err != nil {
+        c.JSON(400, gin.H{"error": "invalid request body"})
+        return
+    }
+
+    newUser := sqlc.CreateUserParams{
+        ID:        uuid.New(),
+        Username:  requestBody.Username,
+        Password:  requestBody.Password,
+        CreatedAt: time.Now(),
+        UpdatedAt: time.Now(),
+    }
+
+    _, err2 := ac.DB.CreateUser(c, newUser)
+    if err2 != nil {
+        c.JSON(500, gin.H{"error": "internal server error"})
+        return
+    }
+
+    c.JSON(201, gin.H{"message": "user registered successfully"})
 }
 
 func (ac *AuthController) Logout(c *gin.Context) {
-	// Delete session logic
+    cookie, err := c.Request.Cookie("session_id")
+    if err != nil {
+        c.JSON(400, gin.H{"error": "no session found"})
+        return
+    }
+
+    err = ac.RedisClient.Del(c, cookie.Value).Err()
+    if err != nil {
+        c.JSON(500, gin.H{"error": "internal server error"})
+        return
+    }
+
+    cookie.Expires = time.Now().Add(-1 * time.Hour)
+    http.SetCookie(c.Writer, cookie)
+
+    c.JSON(200, gin.H{"message": "logout successful"})
 }
 EOL
 
@@ -301,11 +416,10 @@ cd sql/migrations
 touch V1__init.sql
 
 cat <<EOL > V1__init.sql
-CREATE EXTENSION IF NOT EXISTS pg_ulid;
-
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_ulid() NOT NULL UNIQUE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL UNIQUE,
     username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -315,12 +429,12 @@ cd ../queries
 touch users.sql
 cat <<EOL > users.sql
 -- name: CreateUser :one
-    INSERT INTO users (username)
-    VALUES (\$1)
+    INSERT INTO users (id, username, password, created_at, updated_at)
+    VALUES (\$1, \$2, \$3, \$4, \$5)
     RETURNING id, username, created_at, updated_at;
 
 -- name: GetUser :one
-    SELECT id,username,created_at,updated_at
+    SELECT id,username, password, created_at, updated_at
     FROM users
     WHERE username = \$1;
 
@@ -337,7 +451,8 @@ package entity
 
 type SessionValueEntity struct {
 	SessionId string
-	UserId    int
+	Username string
+	UserId    string
 }
 EOL
 
@@ -350,6 +465,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -358,9 +474,9 @@ import (
 
 func GetSession(redisClient *redis.Client) gin.HandlerFunc{
     return func(c *gin.Context) {
-        session := c.Query("session")
-        if session == "" {
-            c.JSON(400, gin.H{"error": "Session is required"})
+        session ,err:= c.Cookie("session_id")
+        if err != nil {
+            c.JSON(400, gin.H{"error": "Session is required from middleware"})
             c.Abort()
             return
         }
@@ -369,6 +485,7 @@ func GetSession(redisClient *redis.Client) gin.HandlerFunc{
         defer cancel()
 
         value, err := redisClient.Get(ctx, session).Result()
+        fmt.Println(value)
         if err != nil {
             c.JSON(400, gin.H{"error": "Invalid session"})
             c.Abort()
@@ -446,9 +563,10 @@ EOL
 # Write Flyway configuration
 cat <<EOL > flyway.conf
 flyway.url=jdbc:postgresql://localhost:5432/${DB_NAME}?sslmode=disable
-flyway.user=\${FLYWAY_USER}
-flyway.password=\${FLYWAY_PASSWORD}
+flyway.user=${FLYWAY_USER}
+flyway.password=${FLYWAY_PASSWORD}
 flyway.locations=filesystem:sql/migrations
+flyway.cleanDisabled=false
 EOL
 
 # Create .gitignore
@@ -473,17 +591,19 @@ touch frequentlyUsedCommands.txt
 cat<<EOL > frequentlyUsedCommands.txt
 flyway migrate
 go build && ./${PROJECT_NAME}
-sqlc generate   
+sqlc generate
 go mod tidy && go mod vendor
 
 cat<<EOL > shellEnvSetupCommands.sh
 export PATH=\$PATH:\$(go env GOPATH)/bin
-export FLYWAY_USER="\$DB_USER"
-export FLYWAY_PASSWORD="\$DB_PASSWORD"
+export PATH=\$PATH:"/c/PROGRA~1/Red Gate/Flyway Desktop/flyway"
+export FLYWAY_USER=<DB_USER>
+export FLYWAY_PASSWORD=<DB_PASSWORD>
 EOL
 
 cat<<EOL > shellEnvSetupCommands.sh
 export PATH=\$PATH:\$(go env GOPATH)/bin
+export PATH=\$PATH:"/c/PROGRA~1/Red Gate/Flyway Desktop/flyway"
 export FLYWAY_USER="$DB_USER"
 export FLYWAY_PASSWORD="$DB_PASSWORD"
 EOL
