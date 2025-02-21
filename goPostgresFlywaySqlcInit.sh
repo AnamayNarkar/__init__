@@ -169,7 +169,6 @@ func SetupRedis() *redis.Client {
 	log.Println("Connected to Redis!")
 	return client
 }
-
 EOL
 
 cd -
@@ -182,9 +181,9 @@ cat <<EOL > allRoutes.go
 package routes
 
 import (
-    $PROJECT_NAME/sqlc
-    $PROJECT_NAME/src/controllers
-    $PROJECT_NAME/src/middleware
+    "$PROJECT_NAME/sqlc"
+    "$PROJECT_NAME/src/controllers"
+    "$PROJECT_NAME/src/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -218,8 +217,6 @@ func (ar *AllRoutes) SetUpAllRoutes() {
 	authGroup.POST("/register", authController.Register)
 	authGroup.POST("/logout", authController.Logout)
 }
-
-
 EOL
 
 cd -
@@ -230,7 +227,7 @@ cat <<EOL > userController.go
 package controllers
 
 import (
-	$PROJECT_NAME/sqlc
+	"$PROJECT_NAME/sqlc"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -252,7 +249,6 @@ func NewUserController(db *sqlc.Queries, redisClient *redis.Client) *UserControl
 func (uc *UserController) GetAllUsers(c *gin.Context) {
 	// Get users from database
 }
-
 EOL
 
 cat <<EOL > authController.go
@@ -260,8 +256,8 @@ cat <<EOL > authController.go
 package controllers
 
 import (
-    $PROJECT_NAME/sqlc
-    $PROJECT_NAME/src/entity
+    "$PROJECT_NAME/sqlc"
+    "$PROJECT_NAME/src/entity"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -297,8 +293,6 @@ func (ac *AuthController) Register(c *gin.Context) {
 func (ac *AuthController) Logout(c *gin.Context) {
 	// Delete session logic
 }
-
-
 EOL
 
 cd -
@@ -307,8 +301,10 @@ cd sql/migrations
 touch V1__init.sql
 
 cat <<EOL > V1__init.sql
-CREATE TABLE users(
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL UNIQUE,
+CREATE EXTENSION IF NOT EXISTS pg_ulid;
+
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_ulid() NOT NULL UNIQUE,
     username TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -343,7 +339,6 @@ type SessionValueEntity struct {
 	SessionId string
 	UserId    int
 }
-
 EOL
 
 cd -
@@ -384,7 +379,6 @@ func GetSession(redisClient *redis.Client) gin.HandlerFunc{
         c.Next()
     }
 }
-
 EOL
 
 cd -
@@ -395,9 +389,10 @@ package main
 
 import (
 	"log"
-    $PROJECT_NAME/sqlc
-    $PROJECT_NAME/src/routes
-    $PROJECT_NAME/src/utils
+
+    "$PROJECT_NAME/sqlc"
+    "$PROJECT_NAME/src/routes"
+    "$PROJECT_NAME/src/utils"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
@@ -427,7 +422,6 @@ func main() {
     port := utils.GetPort()
     r.Run(":" + port)
 }
-
 EOL
 
 # Write configuration to sqlc.yaml
@@ -452,16 +446,16 @@ EOL
 # Write Flyway configuration
 cat <<EOL > flyway.conf
 flyway.url=jdbc:postgresql://localhost:5432/${DB_NAME}?sslmode=disable
-flyway.user=${DB_USER}
-flyway.password=${DB_PASSWORD}
+flyway.user=\${FLYWAY_USER}
+flyway.password=\${FLYWAY_PASSWORD}
 flyway.locations=filesystem:sql/migrations
 EOL
 
 # Create .gitignore
 cat <<EOL > .gitignore
 # Binaries for programs and plugins
+shellEnvSetupCommands.sh
 *.exe
-*.sh
 *.env
 *.log
 vendor/
@@ -479,9 +473,19 @@ touch frequentlyUsedCommands.txt
 cat<<EOL > frequentlyUsedCommands.txt
 flyway migrate
 go build && ./${PROJECT_NAME}
-export PATH=\$PATH:\$(go env GOPATH)/bin
 sqlc generate   
 go mod tidy && go mod vendor
+
+cat<<EOL > shellEnvSetupCommands.sh
+export PATH=\$PATH:\$(go env GOPATH)/bin
+export FLYWAY_USER="\$DB_USER"
+export FLYWAY_PASSWORD="\$DB_PASSWORD"
+EOL
+
+cat<<EOL > shellEnvSetupCommands.sh
+export PATH=\$PATH:\$(go env GOPATH)/bin
+export FLYWAY_USER="$DB_USER"
+export FLYWAY_PASSWORD="$DB_PASSWORD"
 EOL
 
 echo "Running go mod tidy..."
