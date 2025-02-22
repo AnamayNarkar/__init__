@@ -558,6 +558,8 @@ EOL
 cat <<EOL > .env
 PORT=3000
 DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?sslmode=disable
+REDIS_URL=localhost:6379
+REDIS_PASS=
 EOL
 
 # Write Flyway configuration
@@ -599,6 +601,12 @@ export PATH=\$PATH:\$(go env GOPATH)/bin
 export PATH=\$PATH:"/c/PROGRA~1/Red Gate/Flyway Desktop/flyway"
 export FLYWAY_USER=<DB_USER>
 export FLYWAY_PASSWORD=<DB_PASSWORD>
+
+cat<<EOL >.env
+PORT=3000
+DATABASE_URL=postgres://<DB_USER>:<DB
+REDIS_URL=localhost:6379
+REDIS_PASS=
 EOL
 
 cat<<EOL > shellEnvSetupCommands.sh
