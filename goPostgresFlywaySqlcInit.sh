@@ -552,6 +552,7 @@ sql:
       go:
         out: "sqlc"
         emit_json_tags: true
+        initialisms: []
 EOL
 
 # Write environment variables to .env
