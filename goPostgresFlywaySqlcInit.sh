@@ -36,28 +36,22 @@ read -p "Enter database username: " DB_USER
 
 read -p "Enter database password: " -s DB_PASSWORD
 
-# Create directory structure
 echo "Creating necessary directories..."
 mkdir -p src/{routes,controllers,service,utils,security,dto,dao,middleware,entity} sql/{migrations,queries}
 
-# Initialize Go module
 echo "Initializing Go module..."
 go mod init "$PROJECT_NAME"
 
-# Install required tools
 echo "Installing Go tools..."
 export PATH=$PATH:$(go env GOPATH)/bin
 go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
-# Create initial files
 echo "Creating Go files..."
 touch main.go sqlc.yaml .env .gitignore go.mod go.sum flyway.conf
 
-# Create utility files
 echo "Creating utility files..."
 cd src/utils
 
-# Create getPort.go
 cat <<EOL > getPort.go
 package utils
 
@@ -74,7 +68,6 @@ func GetPort() string {
 }
 EOL
 
-# Create loadEnv.go
 cat <<EOL > loadEnv.go
 package utils
 
@@ -87,7 +80,6 @@ func LoadEnv() error {
 }
 EOL
 
-# Create setupCors.go
 cat <<EOL > setupCors.go
 package utils
 
@@ -109,7 +101,6 @@ func SetupCORS() gin.HandlerFunc {
 }
 EOL
 
-# Create setUpDatabase.go
 cat <<EOL > setUpDatabase.go
 package utils
 
@@ -129,6 +120,11 @@ func SetupDatabase() (*sql.DB, error) {
     if err != nil {
         return nil, fmt.Errorf("error opening database connection: %v", err)
     }
+
+    db.SetMaxOpenConns(25)
+    db.SetMaxIdleConns(10)
+    db.SetConnMaxLifetime(300)
+    
     if err := db.Ping(); err != nil {
         return nil, fmt.Errorf("error connecting to database: %v", err)
     }
@@ -500,7 +496,6 @@ EOL
 
 cd -
 
-# Create main.go
 cat <<EOL > main.go
 package main
 
@@ -541,7 +536,6 @@ func main() {
 }
 EOL
 
-# Write configuration to sqlc.yaml
 cat <<EOL > sqlc.yaml
 version: "2"
 sql:
@@ -555,7 +549,6 @@ sql:
         initialisms: []
 EOL
 
-# Write environment variables to .env
 cat <<EOL > .env
 PORT=3000
 DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?sslmode=disable
@@ -563,7 +556,6 @@ REDIS_URL=localhost:6379
 REDIS_PASS=
 EOL
 
-# Write Flyway configuration
 cat <<EOL > flyway.conf
 flyway.url=jdbc:postgresql://localhost:5432/${DB_NAME}?sslmode=disable
 flyway.user=${FLYWAY_USER}
@@ -572,9 +564,7 @@ flyway.locations=filesystem:sql/migrations
 flyway.cleanDisabled=false
 EOL
 
-# Create .gitignore
 cat <<EOL > .gitignore
-# Binaries for programs and plugins
 shellEnvSetupCommands.sh
 *.exe
 *.env
@@ -582,7 +572,6 @@ shellEnvSetupCommands.sh
 vendor/
 EOL
 
-#Create a shell script to create a dump of the postgres database
 cat <<EOL > createSchemaDump.sh
 #!/bin/bash
 pg_dump -U postgres -h localhost -p 5432 -s -F p -v -f ${DB_NAME}_dump.sql ${DB_NAME}
