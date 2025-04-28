@@ -172,8 +172,8 @@ cat <<EOL > usernameAndPasswordDto.go
 package dto
 
 type UsernameAndPasswordDto struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string \`json:"username"\`
+	Password string \`json:"password"\`
 }
 EOL
 
@@ -546,7 +546,7 @@ sql:
       go:
         out: "sqlc"
         emit_json_tags: true
-        initialisms: []
+        # initialisms: []
 EOL
 
 cat <<EOL > .env
@@ -610,6 +610,7 @@ echo "Running go mod tidy..."
 go mod tidy
 go mod vendor
 
+sqlc generate
 
 echo "Setup complete! Project ${PROJECT_NAME} has been initialized."
 echo "Remember to create the database '${DB_NAME}' in PostgreSQL before running the application."
