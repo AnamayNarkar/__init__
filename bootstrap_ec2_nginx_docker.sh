@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+# colors for logs
 GREEN='\033[0;32m'
 NC='\033[0m'
 
